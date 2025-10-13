@@ -11,10 +11,6 @@ class FixedTariffCalculator:
     Contains only pure business logic with no external dependencies.
     """
 
-    # Fixed monthly subscription costs (EUR/month)
-    ECOPOWER_SUBSCRIPTION = 5.0
-    FLUVIUS_SUBSCRIPTION = 2.0  # Monthly component
-
     # Fixed energy rates (EUR/kWh)
     ENERGY_RATE = 0.1187  # 50% fixed (0.17) + 50% variable (0.067423171)
 
@@ -23,7 +19,6 @@ class FixedTariffCalculator:
 
     # Distribution and other costs (EUR/kWh)
     DISTRIBUTION_TARIFF = 0.0704386
-    INJECTION_TARIFF = 0.0017510
     GSC_TARIFF = 0.011
     WKK_TARIFF = 0.00392
 
@@ -48,7 +43,7 @@ class FixedTariffCalculator:
     @classmethod
     def calculate_fixed_cost(cls) -> float:
         """Calculate monthly fixed subscription cost"""
-        return cls.ECOPOWER_SUBSCRIPTION + cls.FLUVIUS_SUBSCRIPTION + cls.ENERGY_FUND_MONTHLY
+        return cls.ENERGY_FUND_MONTHLY
 
     @classmethod
     def calculate_excise_tax(cls, total_kwh: float) -> float:
@@ -123,11 +118,6 @@ class FixedTariffCalculator:
     def calculate_distribution_cost(cls, kwh: float) -> float:
         """Calculate distribution network cost"""
         return kwh * cls.DISTRIBUTION_TARIFF
-
-    @classmethod
-    def calculate_injection_cost(cls, kwh: float) -> float:
-        """Calculate injection (prosumer) tariff cost"""
-        return kwh * cls.INJECTION_TARIFF
 
     @classmethod
     def calculate_gsc_cost(cls, kwh: float) -> float:
@@ -222,7 +212,6 @@ class FixedTariffCalculator:
         energy_cost = cls.calculate_energy_cost(energy_data.total_kwh_delivered)
         energy_revenue = cls.calculate_energy_revenue(energy_data.total_kwh_returned)
         distribution_cost = cls.calculate_distribution_cost(energy_data.total_kwh_delivered)
-        injection_cost = cls.calculate_injection_cost(energy_data.total_kwh_returned)
         gsc_cost = cls.calculate_gsc_cost(energy_data.total_kwh_delivered)
         wkk_cost = cls.calculate_wkk_cost(energy_data.total_kwh_delivered)
         capacity_cost = cls.calculate_monthly_capacity_cost(energy_data.peak_power_kw)
@@ -241,7 +230,7 @@ class FixedTariffCalculator:
             energy_cost=total_energy_cost,
             energy_revenue=energy_revenue,
             distribution_cost=distribution_cost,
-            injection_cost=injection_cost,
+            injection_cost=0.0,
             gsc_cost=gsc_cost,
             wkk_cost=wkk_cost,
             capacity_cost=capacity_cost,

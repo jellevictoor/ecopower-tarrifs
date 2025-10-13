@@ -4,12 +4,7 @@ services:
   ecopower-calculator:
     build: .
     container_name: ecopower-tariffs
-    environment:
-      - INFLUXDB_HOST=192.168.1.5
-      - INFLUXDB_PORT=8086
-      - INFLUXDB_TOKEN=j4rVGQWC65S0MpOnkGkONuomPph99qvUoUFwvbjWClNd0zcesQpk3KEYL2Nn51KNeXsSzvF6l1AMXApjEJpJBQ==
-      - INFLUXDB_ORG=victoor.io
-      - METERING_BUCKET=metering
-      - PRICES_BUCKET=energy_prices
+    env_file:
+      - .env
     network_mode: host
     restart: no
