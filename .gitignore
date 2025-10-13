@@ -1,0 +1,62 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+# Byte-compiled / optimized / DLL files
+*.py[cod]
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Sphinx documentation, excluding python files
+docs/*
+
+# Spyder project settings
+.spyder*
+
+# PyCharm project settings
+.idea/
+
+#system
+.directory
+
+#project specific
+tests/library/old_tests/GreyBoxBuildings_Parest_html_diagnostics/
+
+#fmu
+*.fmu
+
+#vscode settings
+*.vscode/
+
+#user UID&GID (fixes write permissions in Jupyter3 container)
+.user
+
+# Jupyter
+*.ipynb
+.ipynb_checkpoints/
+
+# DB
+prisma_schema_cache/
+
+#---------------------------------------------------------------------
+# Buildings library
+#---------------------------------------------------------------------
+mpc/models/Buildings 8.0.0
+.python-version
+venv
+.eggs
+.env
+.coverage
+coverage.xml
+report.xml
+/tests/.env
+/tests/library/FDD/.approval_tests_temp/.approved_files.log
