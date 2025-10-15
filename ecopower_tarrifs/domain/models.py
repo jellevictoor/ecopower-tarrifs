@@ -60,3 +60,17 @@ class MonthlyCostBreakdown:
             self.capacity_cost -
             self.energy_revenue
         )
+
+    @property
+    def average_price_per_kwh_ex_vat(self) -> float:
+        """Calculate average price per kWh excluding VAT"""
+        if self.total_kwh_delivered == 0:
+            return 0.0
+        return self.total_cost / self.total_kwh_delivered
+
+    @property
+    def average_price_per_kwh_incl_vat(self) -> float:
+        """Calculate average price per kWh including VAT (6% for residential)"""
+        if self.total_kwh_delivered == 0:
+            return 0.0
+        return (self.total_cost * 1.06) / self.total_kwh_delivered

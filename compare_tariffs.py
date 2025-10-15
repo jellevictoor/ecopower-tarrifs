@@ -84,6 +84,12 @@ def main():
         print(f"{'TOTAL COST':<35} €{dynamic_result.total_cost:>8.2f}        €{fixed_result.total_cost:>8.2f}")
         print(f"{'═' * 70}")
 
+        print(f"\n{'─' * 70}")
+        print(f"{'AVERAGE PRICE PER KWH':<35} {'DYNAMIC':<17} {'FIXED':<17}")
+        print(f"{'─' * 70}")
+        print(f"{'Ex VAT:':<35} €{dynamic_result.average_price_per_kwh_ex_vat:>8.4f}        €{fixed_result.average_price_per_kwh_ex_vat:>8.4f}")
+        print(f"{'Incl VAT (6%):':<35} €{dynamic_result.average_price_per_kwh_incl_vat:>8.4f}        €{fixed_result.average_price_per_kwh_incl_vat:>8.4f}")
+
         # Calculate difference
         difference = fixed_result.total_cost - dynamic_result.total_cost
         percentage = (difference / dynamic_result.total_cost) * 100
