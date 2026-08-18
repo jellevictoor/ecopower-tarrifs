@@ -10,9 +10,9 @@ class TestEcopowerTariffCalculator:
     """Test suite for EcopowerTariffCalculator"""
 
     def test_calculate_fixed_cost(self):
-        """Test fixed monthly cost calculation"""
+        """Test fixed monthly cost calculation (Ecopower subscription only)"""
         result = EcopowerTariffCalculator.calculate_fixed_cost()
-        assert result == 7.0  # 5 (ecopower) + 2 (fluvius)
+        assert result == 5.0  # Abonnementskost only
 
     def test_calculate_energy_cost_per_kwh(self):
         """Test energy cost calculation based on EPEX price"""
@@ -29,10 +29,10 @@ class TestEcopowerTariffCalculator:
         assert result == pytest.approx(expected)
 
     def test_calculate_distribution_cost(self):
-        """Test distribution cost calculation"""
+        """Test distribution cost calculation (Afnametarief, Fluvius West)"""
         kwh = 100.0
         result = EcopowerTariffCalculator.calculate_distribution_cost(kwh)
-        expected = 100.0 * 0.0704386
+        expected = 100.0 * 0.0631937
         assert result == pytest.approx(expected)
 
     def test_calculate_injection_cost(self):
@@ -108,14 +108,17 @@ class TestEcopowerTariffCalculator:
         # Verify all components are present
         assert result.year == 2025
         assert result.month == 10
-        assert result.fixed_cost == 7.0
+        assert result.fixed_cost == 5.0  # Abonnementskost only
         assert result.energy_cost > 0
         assert result.energy_revenue > 0
         assert result.distribution_cost > 0
-        assert result.injection_cost > 0
+        assert result.injection_cost == 0.0  # Small prosumer, no injection tariff
         assert result.gsc_cost > 0
         assert result.wkk_cost > 0
         assert result.capacity_cost > 0
+        assert result.data_management_cost > 0  # Kost databeheer
+        assert result.energy_contribution > 0  # Bijdrage op de energie
+        assert result.excise_tax > 0  # Bijzondere accijns
         assert result.total_cost > 0
 
     def test_monthly_cost_breakdown_total_property(self):
@@ -129,16 +132,22 @@ class TestEcopowerTariffCalculator:
             energy_cost=20.0,
             energy_revenue=5.0,
             distribution_cost=15.0,
-            injection_cost=3.0,
+            injection_cost=0.0,
             gsc_cost=4.0,
             wkk_cost=2.0,
             capacity_cost=8.0,
+            data_management_cost=1.44,
+            energy_contribution=2.0,
+            excise_tax=50.0,
+            energy_fund_contribution=0.0,
             total_kwh_delivered=100.0,
             total_kwh_returned=50.0,
             peak_power_kw=5.0
         )
 
-        expected_total = 10 + 20 + 15 + 3 + 4 + 2 + 8 - 5
+        # Total = fixed + energy + distribution + injection + gsc + wkk + capacity
+        #       + data_management + energy_contribution + excise_tax + energy_fund - revenue
+        expected_total = 10 + 20 + 15 + 0 + 4 + 2 + 8 + 1.44 + 2 + 50 + 0 - 5
         assert breakdown.total_cost == pytest.approx(expected_total)
 
     def test_energy_cost_increases_with_epex_price(self):

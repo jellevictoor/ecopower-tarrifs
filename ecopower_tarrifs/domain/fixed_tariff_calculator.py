@@ -1,54 +1,71 @@
 """Fixed tariff calculation logic - Groene Burgerstroom"""
 from typing import List
 from datetime import datetime
+from calendar import monthrange
+
+from sma.ecopower import (
+    GSC_EUR_KWH,
+    WKK_EUR_KWH,
+    BIJDRAGE_ENERGIE_EUR_KWH,
+    ACCIJNS_TIER1_EUR_KWH,
+    AFNAMETARIEF_EUR_PER_KWH,
+)
 
 from .models import PowerReading, MonthlyEnergyData, MonthlyCostBreakdown
+from .tariff_calculator import HOUSEHOLD_REGION
 
 
 class FixedTariffCalculator:
     """
     Calculates electricity costs based on Ecopower fixed tariff (Groene Burgerstroom).
     Contains only pure business logic with no external dependencies.
+
+    Flat Fluvius/government add-ons (Afnametarief, GSC, WKK, energy contribution,
+    excise tax) come from `sma` — same canonical source as EcopowerTariffCalculator,
+    since these fees don't depend on which Ecopower plan (dynamic vs. fixed) you're on.
     """
 
-    # Fixed energy rates (EUR/kWh)
-    ENERGY_RATE = 0.1187  # 50% fixed (0.17) + 50% variable (0.067423171)
+    # Fixed monthly subscription (EUR/month) - Abonnementskost
+    ECOPOWER_SUBSCRIPTION = 5.0
 
-    # Injection compensation (EUR/kWh) - negative means you receive money
-    INJECTION_RATE = -0.0200
+    # Fluvius data management cost (EUR/day) - Kost databeheer
+    DATA_MANAGEMENT_DAILY = 0.048
+
+    # Fixed energy rates (EUR/kWh)
+    ENERGY_RATE = 0.1298  # 50% fixed (0.17) + 50% variable (0.067423171)
+
+    # Injection compensation (EUR/kWh) - you receive money
+    INJECTION_RATE = 0.0200
 
     # Distribution and other costs (EUR/kWh)
-    DISTRIBUTION_TARIFF = 0.0704386
-    GSC_TARIFF = 0.011
-    WKK_TARIFF = 0.00392
+    DISTRIBUTION_TARIFF = AFNAMETARIEF_EUR_PER_KWH[HOUSEHOLD_REGION]  # Afnametarief
+    GSC_TARIFF = GSC_EUR_KWH  # Kost GSC
+    WKK_TARIFF = WKK_EUR_KWH  # Kost WKK
 
-    # Capacity tariff (EUR/kW/year) - Fluvius
+    # Capacity tariff (EUR/kW/year) - Capaciteitstarief
     CAPACITY_TARIFF_YEARLY = 56.93
 
-    # Fluvius yearly fixed cost
-    FLUVIUS_YEARLY_FIXED = 17.51
-
     # Government taxes for residential customers (EUR/kWh)
-    ENERGY_CONTRIBUTION = 0.0019261
+    ENERGY_CONTRIBUTION = BIJDRAGE_ENERGIE_EUR_KWH  # Bijdrage op de energie
+    EXCISE_TAX = ACCIJNS_TIER1_EUR_KWH  # Bijzondere accijns
 
-    # Tiered excise tax for residential (EUR/kWh)
-    EXCISE_TIER_1 = 0.04748  # 0-3,000 kWh
-    EXCISE_TIER_2 = 0.04748  # 3,000-20,000 kWh
-    EXCISE_TIER_3 = 0.04546  # 20,000-50,000 kWh
-    EXCISE_TIER_4 = 0.04478  # 50,000-1,000,000 kWh
-
-    # Energy fund contribution (EUR/month)
-    ENERGY_FUND_MONTHLY = 0.005
+    # Energy fund contribution (EUR/month) - Bijdrage Energiefonds
+    ENERGY_FUND_MONTHLY = 0.00  # Reduced rate for residential
 
     @classmethod
     def calculate_fixed_cost(cls) -> float:
-        """Calculate monthly fixed subscription cost"""
-        return cls.ENERGY_FUND_MONTHLY
+        """Calculate monthly fixed subscription cost (Ecopower only)"""
+        return cls.ECOPOWER_SUBSCRIPTION
+
+    @classmethod
+    def calculate_data_management_cost(cls, days_in_month: int) -> float:
+        """Calculate Fluvius data management cost (Kost databeheer)"""
+        return cls.DATA_MANAGEMENT_DAILY * days_in_month
 
     @classmethod
     def calculate_excise_tax(cls, total_kwh: float) -> float:
         """
-        Calculate tiered excise tax based on total consumption
+        Calculate excise tax (Bijzondere accijns)
 
         Args:
             total_kwh: Total consumption in kWh
@@ -56,31 +73,12 @@ class FixedTariffCalculator:
         Returns:
             Total excise tax in EUR
         """
-        excise = 0.0
+        return total_kwh * cls.EXCISE_TAX
 
-        if total_kwh <= 3000:
-            # Tier 1: 0-3,000 kWh
-            excise = total_kwh * cls.EXCISE_TIER_1
-        elif total_kwh <= 20000:
-            # Tier 1 + Tier 2
-            excise = 3000 * cls.EXCISE_TIER_1 + (total_kwh - 3000) * cls.EXCISE_TIER_2
-        elif total_kwh <= 50000:
-            # Tier 1 + Tier 2 + Tier 3
-            excise = (
-                3000 * cls.EXCISE_TIER_1 +
-                17000 * cls.EXCISE_TIER_2 +
-                (total_kwh - 20000) * cls.EXCISE_TIER_3
-            )
-        else:
-            # All tiers
-            excise = (
-                3000 * cls.EXCISE_TIER_1 +
-                17000 * cls.EXCISE_TIER_2 +
-                30000 * cls.EXCISE_TIER_3 +
-                (total_kwh - 50000) * cls.EXCISE_TIER_4
-            )
-
-        return excise
+    @classmethod
+    def calculate_energy_fund_contribution(cls) -> float:
+        """Calculate energy fund contribution (Bijdrage Energiefonds)"""
+        return cls.ENERGY_FUND_MONTHLY
 
     @classmethod
     def calculate_energy_cost(cls, kwh: float) -> float:
@@ -106,8 +104,7 @@ class FixedTariffCalculator:
         Returns:
             Revenue in EUR (positive = you receive money)
         """
-        # Rate is negative, so multiply by -1 to get positive revenue
-        return kwh * (-cls.INJECTION_RATE)
+        return kwh * cls.INJECTION_RATE
 
     @classmethod
     def calculate_energy_contribution(cls, kwh: float) -> float:
@@ -201,6 +198,9 @@ class FixedTariffCalculator:
         Returns:
             Complete monthly cost breakdown
         """
+        # Get days in month for data management cost
+        days_in_month = monthrange(year, month)[1]
+
         # Aggregate energy data
         energy_data = cls.aggregate_energy_data(
             consumption_readings,
@@ -209,6 +209,7 @@ class FixedTariffCalculator:
 
         # Calculate all cost components
         fixed_cost = cls.calculate_fixed_cost()
+        data_management_cost = cls.calculate_data_management_cost(days_in_month)
         energy_cost = cls.calculate_energy_cost(energy_data.total_kwh_delivered)
         energy_revenue = cls.calculate_energy_revenue(energy_data.total_kwh_returned)
         distribution_cost = cls.calculate_distribution_cost(energy_data.total_kwh_delivered)
@@ -219,21 +220,23 @@ class FixedTariffCalculator:
         # Government taxes
         energy_contribution = cls.calculate_energy_contribution(energy_data.total_kwh_delivered)
         excise_tax = cls.calculate_excise_tax(energy_data.total_kwh_delivered)
-
-        # Combine all costs
-        total_energy_cost = energy_cost + energy_contribution + excise_tax
+        energy_fund_contribution = cls.calculate_energy_fund_contribution()
 
         return MonthlyCostBreakdown(
             year=year,
             month=month,
             fixed_cost=fixed_cost,
-            energy_cost=total_energy_cost,
+            energy_cost=energy_cost,
             energy_revenue=energy_revenue,
             distribution_cost=distribution_cost,
-            injection_cost=0.0,
+            injection_cost=0.0,  # Small prosumers (≤10 kVA) pay no injection tariff
             gsc_cost=gsc_cost,
             wkk_cost=wkk_cost,
             capacity_cost=capacity_cost,
+            data_management_cost=data_management_cost,
+            energy_contribution=energy_contribution,
+            excise_tax=excise_tax,
+            energy_fund_contribution=energy_fund_contribution,
             total_kwh_delivered=energy_data.total_kwh_delivered,
             total_kwh_returned=energy_data.total_kwh_returned,
             peak_power_kw=energy_data.peak_power_kw

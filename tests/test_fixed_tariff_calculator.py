@@ -10,16 +10,15 @@ class TestFixedTariffCalculator:
     """Test suite for FixedTariffCalculator"""
 
     def test_calculate_fixed_cost(self):
-        """Test fixed monthly cost calculation"""
+        """Test fixed monthly cost calculation (Abonnementskost only)"""
         result = FixedTariffCalculator.calculate_fixed_cost()
-        # 5 (ecopower) + 2 (fluvius) + 0.005 (energy fund)
-        assert result == pytest.approx(7.005)
+        assert result == pytest.approx(5.0)  # Ecopower subscription only
 
     def test_calculate_energy_cost(self):
         """Test fixed energy cost calculation"""
         kwh = 100.0
         result = FixedTariffCalculator.calculate_energy_cost(kwh)
-        expected = 100.0 * 0.1187
+        expected = 100.0 * 0.1298  # Updated fixed rate
         assert result == pytest.approx(expected)
 
     def test_calculate_energy_revenue(self):
@@ -29,58 +28,25 @@ class TestFixedTariffCalculator:
         expected = 50.0 * 0.0200  # Positive revenue
         assert result == pytest.approx(expected)
 
-    def test_calculate_excise_tax_tier_1(self):
-        """Test excise tax for tier 1 (0-3000 kWh)"""
+    def test_calculate_excise_tax(self):
+        """Test excise tax (Bijzondere accijns, residential tier 1)"""
         kwh = 1000.0
         result = FixedTariffCalculator.calculate_excise_tax(kwh)
         expected = 1000.0 * 0.04748
         assert result == pytest.approx(expected)
 
-    def test_calculate_excise_tax_tier_2(self):
-        """Test excise tax for tier 2 (3000-20000 kWh)"""
-        kwh = 5000.0
-        result = FixedTariffCalculator.calculate_excise_tax(kwh)
-        expected = (
-            3000 * 0.04748 +  # First 3000 kWh
-            2000 * 0.04748    # Next 2000 kWh
-        )
-        assert result == pytest.approx(expected)
-
-    def test_calculate_excise_tax_tier_3(self):
-        """Test excise tax for tier 3 (20000-50000 kWh)"""
-        kwh = 25000.0
-        result = FixedTariffCalculator.calculate_excise_tax(kwh)
-        expected = (
-            3000 * 0.04748 +   # First 3000 kWh
-            17000 * 0.04748 +  # Next 17000 kWh (3000-20000)
-            5000 * 0.04546     # Next 5000 kWh (20000-25000)
-        )
-        assert result == pytest.approx(expected)
-
-    def test_calculate_excise_tax_tier_4(self):
-        """Test excise tax for tier 4 (50000+ kWh)"""
-        kwh = 60000.0
-        result = FixedTariffCalculator.calculate_excise_tax(kwh)
-        expected = (
-            3000 * 0.04748 +   # First 3000 kWh
-            17000 * 0.04748 +  # Next 17000 kWh
-            30000 * 0.04546 +  # Next 30000 kWh
-            10000 * 0.04478    # Next 10000 kWh
-        )
-        assert result == pytest.approx(expected)
-
     def test_calculate_energy_contribution(self):
-        """Test government energy contribution"""
+        """Test government energy contribution (Bijdrage op de energie)"""
         kwh = 100.0
         result = FixedTariffCalculator.calculate_energy_contribution(kwh)
         expected = 100.0 * 0.0019261
         assert result == pytest.approx(expected)
 
     def test_calculate_distribution_cost(self):
-        """Test distribution cost calculation"""
+        """Test distribution cost calculation (Afnametarief, Fluvius West)"""
         kwh = 100.0
         result = FixedTariffCalculator.calculate_distribution_cost(kwh)
-        expected = 100.0 * 0.0704386
+        expected = 100.0 * 0.0631937
         assert result == pytest.approx(expected)
 
     def test_calculate_monthly_capacity_cost(self):
@@ -121,14 +87,17 @@ class TestFixedTariffCalculator:
         # Verify all components are present
         assert result.year == 2025
         assert result.month == 10
-        assert result.fixed_cost == pytest.approx(7.005)
+        assert result.fixed_cost == pytest.approx(5.0)  # Abonnementskost only
         assert result.energy_cost > 0
         assert result.energy_revenue > 0
         assert result.distribution_cost > 0
-        assert result.injection_cost > 0
+        assert result.injection_cost == 0.0  # Small prosumer, no injection tariff
         assert result.gsc_cost > 0
         assert result.wkk_cost > 0
         assert result.capacity_cost > 0
+        assert result.data_management_cost > 0  # Kost databeheer
+        assert result.energy_contribution > 0  # Bijdrage op de energie
+        assert result.excise_tax > 0  # Bijzondere accijns
         assert result.total_cost > 0
 
     def test_fixed_tariff_no_epex_dependency(
@@ -171,7 +140,7 @@ class TestFixedTariffCalculator:
         sample_consumption_readings,
         sample_injection_readings
     ):
-        """Test that monthly cost includes energy contribution and excise tax"""
+        """Test that monthly cost includes separate energy contribution and excise tax"""
         result = FixedTariffCalculator.calculate_monthly_cost(
             year=2025,
             month=10,
@@ -179,15 +148,16 @@ class TestFixedTariffCalculator:
             injection_readings=sample_injection_readings
         )
 
-        # Energy cost should include base rate + contribution + excise
+        # Verify taxes are tracked separately (not combined into energy_cost)
         energy_data = FixedTariffCalculator.aggregate_energy_data(
             sample_consumption_readings,
             sample_injection_readings
         )
 
-        base_energy = energy_data.total_kwh_delivered * 0.1187
-        contribution = energy_data.total_kwh_delivered * 0.0019261
-        excise = FixedTariffCalculator.calculate_excise_tax(energy_data.total_kwh_delivered)
+        expected_energy_cost = energy_data.total_kwh_delivered * 0.1298  # Base rate only
+        expected_contribution = energy_data.total_kwh_delivered * 0.0019261
+        expected_excise = energy_data.total_kwh_delivered * 0.04748
 
-        expected_energy_cost = base_energy + contribution + excise
         assert result.energy_cost == pytest.approx(expected_energy_cost)
+        assert result.energy_contribution == pytest.approx(expected_contribution)
+        assert result.excise_tax == pytest.approx(expected_excise)

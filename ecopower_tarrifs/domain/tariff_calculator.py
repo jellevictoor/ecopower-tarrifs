@@ -1,41 +1,93 @@
 """Tariff calculation logic - pure business rules"""
 from typing import List, Dict
 from datetime import datetime
+from calendar import monthrange
+
+from sma.ecopower import (
+    FluviusRegion,
+    CONSUMPTION_EPEX_COEFF,
+    CONSUMPTION_FIXED_EUR_KWH,
+    INJECTION_EPEX_COEFF,
+    INJECTION_FIXED_EUR_KWH,
+    AFNAMETARIEF_EUR_PER_KWH,
+    GSC_EUR_KWH,
+    WKK_EUR_KWH,
+    BIJDRAGE_ENERGIE_EUR_KWH,
+    ACCIJNS_TIER1_EUR_KWH,
+)
 
 from .models import PowerReading, EpexPrice, MonthlyEnergyData, MonthlyCostBreakdown
+
+# Household's Fluvius distribution region — determines which Afnametarief applies.
+# Gaselwest was renamed Fluvius West on 2025-01-01.
+HOUSEHOLD_REGION = FluviusRegion.WEST
 
 
 class EcopowerTariffCalculator:
     """
     Calculates electricity costs based on Ecopower tariff structure.
     Contains only pure business logic with no external dependencies.
+
+    Per-kWh economics (EPEX coefficients, Afnametarief, GSC, WKK, energy
+    contribution, excise tax) come from the `sma` package — the canonical,
+    dated (202601_dbs_tariefkaart.pdf), region-aware source, also used for
+    curtailment decisions and validated against real invoices via
+    KLSKMP_homelab/energy_analysis. Only fields sma doesn't model (Ecopower's
+    own subscription/capacity/prosumer fees) are defined here.
     """
 
     # Fixed monthly subscription costs (EUR/month)
-    ECOPOWER_SUBSCRIPTION = 5.0
-    FLUVIUS_SUBSCRIPTION = 2.0
+    ECOPOWER_SUBSCRIPTION = 5.0  # Abonnementskost
+
+    # Fluvius data management cost (EUR/day) - Kost databeheer
+    DATA_MANAGEMENT_DAILY = 0.048
 
     # Energy cost coefficients (based on EPEX price in EUR/MWh)
-    CONSUMPTION_COEFFICIENT = 0.00102
-    CONSUMPTION_FIXED = 0.004
+    CONSUMPTION_COEFFICIENT = CONSUMPTION_EPEX_COEFF
+    CONSUMPTION_FIXED = CONSUMPTION_FIXED_EUR_KWH
 
     # Injection revenue coefficients (based on EPEX price in EUR/MWh)
-    INJECTION_COEFFICIENT = 0.00098
-    INJECTION_FIXED = -0.015
+    INJECTION_COEFFICIENT = INJECTION_EPEX_COEFF
+    INJECTION_FIXED = INJECTION_FIXED_EUR_KWH
 
     # Distribution and other costs (EUR/kWh)
-    DISTRIBUTION_TARIFF = 0.0704386
-    INJECTION_TARIFF = 0.0017510
-    GSC_TARIFF = 0.011
-    WKK_TARIFF = 0.00392
+    DISTRIBUTION_TARIFF = AFNAMETARIEF_EUR_PER_KWH[HOUSEHOLD_REGION]  # Afnametarief
+    INJECTION_TARIFF = 0.0017510  # Only for prosumers >10 kVA
+    GSC_TARIFF = GSC_EUR_KWH  # Kost GSC
+    WKK_TARIFF = WKK_EUR_KWH  # Kost WKK
 
-    # Capacity tariff (EUR/kW/year)
+    # Capacity tariff (EUR/kW/year) - Capaciteitstarief
     CAPACITY_TARIFF_YEARLY = 56.93
+
+    # Government taxes (Heffingen)
+    ENERGY_CONTRIBUTION = BIJDRAGE_ENERGIE_EUR_KWH  # Bijdrage op de energie (EUR/kWh)
+    EXCISE_TAX = ACCIJNS_TIER1_EUR_KWH  # Bijzondere accijns (EUR/kWh)
+    ENERGY_FUND_MONTHLY = 0.00  # Bijdrage Energiefonds (reduced rate for residential)
 
     @classmethod
     def calculate_fixed_cost(cls) -> float:
-        """Calculate monthly fixed subscription cost"""
-        return cls.ECOPOWER_SUBSCRIPTION + cls.FLUVIUS_SUBSCRIPTION
+        """Calculate monthly fixed subscription cost (Ecopower only)"""
+        return cls.ECOPOWER_SUBSCRIPTION
+
+    @classmethod
+    def calculate_data_management_cost(cls, days_in_month: int) -> float:
+        """Calculate Fluvius data management cost (Kost databeheer)"""
+        return cls.DATA_MANAGEMENT_DAILY * days_in_month
+
+    @classmethod
+    def calculate_energy_contribution(cls, kwh: float) -> float:
+        """Calculate government energy contribution (Bijdrage op de energie)"""
+        return kwh * cls.ENERGY_CONTRIBUTION
+
+    @classmethod
+    def calculate_excise_tax(cls, kwh: float) -> float:
+        """Calculate excise tax (Bijzondere accijns)"""
+        return kwh * cls.EXCISE_TAX
+
+    @classmethod
+    def calculate_energy_fund_contribution(cls) -> float:
+        """Calculate energy fund contribution (Bijdrage Energiefonds)"""
+        return cls.ENERGY_FUND_MONTHLY
 
     @classmethod
     def calculate_energy_cost_per_kwh(cls, epex_price_eur_mwh: float) -> float:
@@ -165,7 +217,8 @@ class EcopowerTariffCalculator:
         month: int,
         consumption_readings: List[PowerReading],
         injection_readings: List[PowerReading],
-        epex_prices: Dict[datetime, float]
+        epex_prices: Dict[datetime, float],
+        is_small_prosumer: bool = True  # ≤10 kVA, no injection tariff
     ) -> MonthlyCostBreakdown:
         """
         Calculate complete monthly cost breakdown
@@ -176,10 +229,14 @@ class EcopowerTariffCalculator:
             consumption_readings: List of power consumption readings
             injection_readings: List of power injection readings
             epex_prices: Dictionary mapping timestamps to EPEX prices
+            is_small_prosumer: If True (≤10 kVA), no injection tariff charged
 
         Returns:
             Complete monthly cost breakdown
         """
+        # Get days in month for data management cost
+        days_in_month = monthrange(year, month)[1]
+
         # Calculate energy costs and aggregate data
         energy_cost, energy_revenue, energy_data = cls.calculate_quarterly_energy_costs(
             consumption_readings,
@@ -189,11 +246,20 @@ class EcopowerTariffCalculator:
 
         # Calculate all cost components
         fixed_cost = cls.calculate_fixed_cost()
+        data_management_cost = cls.calculate_data_management_cost(days_in_month)
         distribution_cost = cls.calculate_distribution_cost(energy_data.total_kwh_delivered)
-        injection_cost = cls.calculate_injection_cost(energy_data.total_kwh_returned)
+
+        # Injection tariff only for prosumers >10 kVA
+        injection_cost = 0.0 if is_small_prosumer else cls.calculate_injection_cost(energy_data.total_kwh_returned)
+
         gsc_cost = cls.calculate_gsc_cost(energy_data.total_kwh_delivered)
         wkk_cost = cls.calculate_wkk_cost(energy_data.total_kwh_delivered)
         capacity_cost = cls.calculate_monthly_capacity_cost(energy_data.peak_power_kw)
+
+        # Government taxes
+        energy_contribution = cls.calculate_energy_contribution(energy_data.total_kwh_delivered)
+        excise_tax = cls.calculate_excise_tax(energy_data.total_kwh_delivered)
+        energy_fund_contribution = cls.calculate_energy_fund_contribution()
 
         return MonthlyCostBreakdown(
             year=year,
@@ -206,6 +272,10 @@ class EcopowerTariffCalculator:
             gsc_cost=gsc_cost,
             wkk_cost=wkk_cost,
             capacity_cost=capacity_cost,
+            data_management_cost=data_management_cost,
+            energy_contribution=energy_contribution,
+            excise_tax=excise_tax,
+            energy_fund_contribution=energy_fund_contribution,
             total_kwh_delivered=energy_data.total_kwh_delivered,
             total_kwh_returned=energy_data.total_kwh_returned,
             peak_power_kw=energy_data.peak_power_kw
