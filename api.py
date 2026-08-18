@@ -16,6 +16,7 @@ from ecopower_tarrifs.adapters.influxdb_repository import (
     InfluxDBEpexPriceRepository,
 )
 from ecopower_tarrifs.domain.models import MonthlyCostBreakdown
+from ecopower_tarrifs.domain.tariff_calculator import EcopowerTariffCalculator
 from ecopower_tarrifs.services.cost_calculation_service import MonthlyCostCalculationService
 from ecopower_tarrifs.services.fixed_cost_calculation_service import (
     FixedMonthlyCostCalculationService,
@@ -64,6 +65,27 @@ def _make_fixed_service() -> FixedMonthlyCostCalculationService:
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/price/per-kwh")
+def price_per_kwh(epex_eur_mwh: float, direction: Literal["consumption", "injection"] = "consumption"):
+    """Stateless lookup: the actual all-in €/kWh price for a given EPEX value.
+
+    No InfluxDB access — callers who already have an EPEX price (e.g. for a
+    specific EV charging session window) can get the correct formula applied
+    without needing to know the underlying tariff constants themselves.
+    """
+    if direction == "consumption":
+        price = EcopowerTariffCalculator.calculate_energy_cost_per_kwh(epex_eur_mwh)
+        price += EcopowerTariffCalculator.DISTRIBUTION_TARIFF
+        price += EcopowerTariffCalculator.GSC_TARIFF
+        price += EcopowerTariffCalculator.WKK_TARIFF
+        price += EcopowerTariffCalculator.ENERGY_CONTRIBUTION
+        price += EcopowerTariffCalculator.EXCISE_TAX
+    else:
+        price = EcopowerTariffCalculator.calculate_energy_revenue_per_kwh(epex_eur_mwh)
+
+    return {"epex_eur_mwh": epex_eur_mwh, "direction": direction, "price_eur_kwh": price}
 
 
 @app.get("/cost")
