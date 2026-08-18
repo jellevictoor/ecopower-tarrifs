@@ -5,9 +5,11 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "fastapi>=0.115",
     "influxdb-client>=1.49.0",
     "pandas>=2.3.3",
     "sma @ git+https://github.com/jellevictoor/sma-curtail.git",
+    "uvicorn[standard]>=0.32",
 ]
 
 [dependency-groups]
