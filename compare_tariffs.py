@@ -1,5 +1,7 @@
 """Compare dynamic EPEX pricing vs fixed tariff"""
 import os
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
 from ecopower_tarrifs.adapters.influxdb_repository import (
     InfluxDBPowerReadingRepository,
     InfluxDBEpexPriceRepository
@@ -8,8 +10,24 @@ from ecopower_tarrifs.services.cost_calculation_service import MonthlyCostCalcul
 from ecopower_tarrifs.services.fixed_cost_calculation_service import FixedMonthlyCostCalculationService
 
 
+def get_target_month() -> tuple[int, int]:
+    """Get target year and month based on TARGET_MONTH env var.
+
+    Returns:
+        Tuple of (year, month)
+    """
+    target = os.getenv("TARGET_MONTH", "current").lower()
+    now = datetime.now()
+
+    if target == "previous":
+        prev = now - relativedelta(months=1)
+        return prev.year, prev.month
+    else:
+        return now.year, now.month
+
+
 def main():
-    """Compare current month's electricity cost between both tariff types"""
+    """Compare monthly electricity cost between both tariff types"""
 
     # Configuration from environment variables
     INFLUXDB_HOST = os.getenv("INFLUXDB_HOST", "192.168.1.5")
@@ -47,9 +65,12 @@ def main():
     )
 
     try:
-        # Calculate current month's cost with both tariffs
-        dynamic_result = dynamic_service.calculate_current_month_cost()
-        fixed_result = fixed_service.calculate_current_month_cost()
+        # Get target month (current or previous based on TARGET_MONTH env var)
+        year, month = get_target_month()
+
+        # Calculate cost for target month with both tariffs
+        dynamic_result = dynamic_service.calculate_monthly_cost(year, month)
+        fixed_result = fixed_service.calculate_monthly_cost(year, month)
 
         # Print comparison
         print("\n" + "=" * 70)
@@ -67,13 +88,19 @@ def main():
         print(f"\n{'─' * 70}")
         print(f"{'COST BREAKDOWN':<35} {'DYNAMIC':<17} {'FIXED':<17}")
         print(f"{'─' * 70}")
-        print(f"{'Fixed cost':<35} €{dynamic_result.fixed_cost:>8.2f}        €{fixed_result.fixed_cost:>8.2f}")
+        print(f"{'Abonnementskost':<35} €{dynamic_result.fixed_cost:>8.2f}        €{fixed_result.fixed_cost:>8.2f}")
         print(f"{'Energy cost':<35} €{dynamic_result.energy_cost:>8.2f}        €{fixed_result.energy_cost:>8.2f}")
-        print(f"{'Distribution cost':<35} €{dynamic_result.distribution_cost:>8.2f}        €{fixed_result.distribution_cost:>8.2f}")
-        print(f"{'Injection cost':<35} €{dynamic_result.injection_cost:>8.2f}        €{fixed_result.injection_cost:>8.2f}")
         print(f"{'GSC cost':<35} €{dynamic_result.gsc_cost:>8.2f}        €{fixed_result.gsc_cost:>8.2f}")
         print(f"{'WKK cost':<35} €{dynamic_result.wkk_cost:>8.2f}        €{fixed_result.wkk_cost:>8.2f}")
-        print(f"{'Capacity cost':<35} €{dynamic_result.capacity_cost:>8.2f}        €{fixed_result.capacity_cost:>8.2f}")
+        print(f"\n{'NETTARIEVEN (Fluvius)':<35}")
+        print(f"{'Kost databeheer':<35} €{dynamic_result.data_management_cost:>8.2f}        €{fixed_result.data_management_cost:>8.2f}")
+        print(f"{'Capaciteitstarief':<35} €{dynamic_result.capacity_cost:>8.2f}        €{fixed_result.capacity_cost:>8.2f}")
+        print(f"{'Afnametarief':<35} €{dynamic_result.distribution_cost:>8.2f}        €{fixed_result.distribution_cost:>8.2f}")
+        print(f"{'Injectietarief':<35} €{dynamic_result.injection_cost:>8.2f}        €{fixed_result.injection_cost:>8.2f}")
+        print(f"\n{'HEFFINGEN (Government)':<35}")
+        print(f"{'Bijdrage op de energie':<35} €{dynamic_result.energy_contribution:>8.2f}        €{fixed_result.energy_contribution:>8.2f}")
+        print(f"{'Bijzondere accijns':<35} €{dynamic_result.excise_tax:>8.2f}        €{fixed_result.excise_tax:>8.2f}")
+        print(f"{'Bijdrage Energiefonds':<35} €{dynamic_result.energy_fund_contribution:>8.2f}        €{fixed_result.energy_fund_contribution:>8.2f}")
 
         print(f"\n{'─' * 70}")
         print(f"{'REVENUE':<35} {'DYNAMIC':<17} {'FIXED':<17}")

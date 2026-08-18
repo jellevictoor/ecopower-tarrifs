@@ -33,19 +33,27 @@ class MonthlyCostBreakdown:
     month: int
 
     # Cost components
-    fixed_cost: float
-    energy_cost: float
-    energy_revenue: float
-    distribution_cost: float
-    injection_cost: float
-    gsc_cost: float
-    wkk_cost: float
-    capacity_cost: float
+    fixed_cost: float  # Abonnementskost (Ecopower subscription)
+    energy_cost: float  # Dynamische burgerstroom energy
+    energy_revenue: float  # Injection revenue
+    distribution_cost: float  # Afnametarief
+    injection_cost: float  # Injectietarief (€0 for ≤10 kVA)
+    gsc_cost: float  # Kost GSC
+    wkk_cost: float  # Kost WKK
+    capacity_cost: float  # Capaciteitstarief
+
+    # Fluvius costs
+    data_management_cost: float = 0.0  # Kost databeheer (€0.048/day)
+
+    # Government taxes (Heffingen)
+    energy_contribution: float = 0.0  # Bijdrage op de energie
+    excise_tax: float = 0.0  # Bijzondere accijns
+    energy_fund_contribution: float = 0.0  # Bijdrage Energiefonds
 
     # Usage metrics
-    total_kwh_delivered: float
-    total_kwh_returned: float
-    peak_power_kw: float
+    total_kwh_delivered: float = 0.0
+    total_kwh_returned: float = 0.0
+    peak_power_kw: float = 0.0
 
     @property
     def total_cost(self) -> float:
@@ -57,7 +65,11 @@ class MonthlyCostBreakdown:
             self.injection_cost +
             self.gsc_cost +
             self.wkk_cost +
-            self.capacity_cost -
+            self.capacity_cost +
+            self.data_management_cost +
+            self.energy_contribution +
+            self.excise_tax +
+            self.energy_fund_contribution -
             self.energy_revenue
         )
 

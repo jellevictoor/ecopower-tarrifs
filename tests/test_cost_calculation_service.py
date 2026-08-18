@@ -58,8 +58,9 @@ class TestMonthlyCostCalculationService:
 
         result = service.calculate_monthly_cost(year=2025, month=10)
 
-        # Should still have fixed costs
-        assert result.fixed_cost == 7.0
+        # Should still have fixed costs (Abonnementskost + Kost databeheer)
+        assert result.fixed_cost == 5.0  # Abonnementskost only
+        assert result.data_management_cost > 0  # Kost databeheer (per-day)
         # But no variable costs
         assert result.energy_cost == 0.0
         assert result.total_kwh_delivered == 0.0
@@ -83,7 +84,7 @@ class TestMonthlyCostCalculationService:
         assert result is not None
         assert result.year > 0
         assert result.month > 0
-        assert result.fixed_cost == 7.0
+        assert result.fixed_cost == 5.0  # Abonnementskost only
 
     def test_service_uses_repository_interfaces(
         self,
@@ -139,11 +140,14 @@ class TestMonthlyCostCalculationService:
         result = service.calculate_monthly_cost(year=2025, month=10)
 
         # Verify that all cost components are calculated
-        assert result.fixed_cost == 7.0  # Known fixed cost
+        assert result.fixed_cost == 5.0  # Abonnementskost only
+        assert result.data_management_cost > 0  # Kost databeheer
         assert result.distribution_cost > 0
         assert result.gsc_cost > 0
         assert result.wkk_cost > 0
         assert result.capacity_cost > 0
+        assert result.energy_contribution > 0  # Bijdrage op de energie
+        assert result.excise_tax > 0  # Bijzondere accijns
 
         # Verify total is sum of all components
         manual_total = (
@@ -153,7 +157,11 @@ class TestMonthlyCostCalculationService:
             result.injection_cost +
             result.gsc_cost +
             result.wkk_cost +
-            result.capacity_cost -
+            result.capacity_cost +
+            result.data_management_cost +
+            result.energy_contribution +
+            result.excise_tax +
+            result.energy_fund_contribution -
             result.energy_revenue
         )
         assert result.total_cost == pytest.approx(manual_total)
