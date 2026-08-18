@@ -143,3 +143,9 @@ def cost_comparison(year: int, month: int):
         "savings_eur": abs(difference),
         "savings_percent": percentage,
     }
+
+
+@app.get("/cost/comparison/current")
+def cost_comparison_current():
+    now = datetime.now()
+    return cost_comparison(year=now.year, month=now.month)
