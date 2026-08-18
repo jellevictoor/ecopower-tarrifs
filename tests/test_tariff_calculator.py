@@ -169,3 +169,35 @@ class TestEcopowerTariffCalculator:
         high_revenue = EcopowerTariffCalculator.calculate_energy_revenue_per_kwh(high_price)
 
         assert high_revenue > low_revenue
+
+    def test_calculate_range_cost_excludes_monthly_only_components(
+        self,
+        sample_consumption_readings,
+        sample_injection_readings,
+        sample_epex_prices,
+    ):
+        """Range cost (day/week/year view) has no fixed/data-management/capacity cost"""
+        epex_prices = {p.timestamp: p.price_eur_mwh for p in sample_epex_prices}
+
+        result = EcopowerTariffCalculator.calculate_range_cost(
+            consumption_readings=sample_consumption_readings,
+            injection_readings=sample_injection_readings,
+            epex_prices=epex_prices,
+        )
+
+        assert result.fixed_cost == 0.0
+        assert result.data_management_cost == 0.0
+        assert result.capacity_cost == 0.0
+        assert result.injection_cost == 0.0
+        assert result.energy_fund_contribution == 0.0
+
+        # But the actual energy economics are still computed
+        assert result.energy_cost > 0
+        assert result.energy_revenue > 0
+        assert result.distribution_cost > 0
+        assert result.gsc_cost > 0
+        assert result.wkk_cost > 0
+        assert result.energy_contribution > 0
+        assert result.excise_tax > 0
+        assert result.peak_power_kw > 0  # still informational
+        assert result.total_kwh_delivered > 0

@@ -280,3 +280,56 @@ class EcopowerTariffCalculator:
             total_kwh_returned=energy_data.total_kwh_returned,
             peak_power_kw=energy_data.peak_power_kw
         )
+
+    @classmethod
+    def calculate_range_cost(
+        cls,
+        consumption_readings: List[PowerReading],
+        injection_readings: List[PowerReading],
+        epex_prices: Dict[datetime, float],
+    ) -> MonthlyCostBreakdown:
+        """
+        Calculate energy cost for an arbitrary date range (day/week/year view).
+
+        Excludes fixed_cost, data_management_cost and capacity_cost — those
+        are inherently monthly concepts (Ecopower subscription, Fluvius daily
+        fee, Fluvius capacity tariff billed on the calendar month's peak) and
+        don't have a meaningful prorated value for an arbitrary sub-period.
+        Use calculate_monthly_cost for a real calendar month.
+
+        Returns:
+            MonthlyCostBreakdown with year=month=0 and fixed/data_management/
+            capacity costs set to 0; peak_power_kw is still populated for
+            informational display, just not billed via capacity_cost here.
+        """
+        energy_cost, energy_revenue, energy_data = cls.calculate_quarterly_energy_costs(
+            consumption_readings,
+            injection_readings,
+            epex_prices,
+        )
+
+        distribution_cost = cls.calculate_distribution_cost(energy_data.total_kwh_delivered)
+        gsc_cost = cls.calculate_gsc_cost(energy_data.total_kwh_delivered)
+        wkk_cost = cls.calculate_wkk_cost(energy_data.total_kwh_delivered)
+        energy_contribution = cls.calculate_energy_contribution(energy_data.total_kwh_delivered)
+        excise_tax = cls.calculate_excise_tax(energy_data.total_kwh_delivered)
+
+        return MonthlyCostBreakdown(
+            year=0,
+            month=0,
+            fixed_cost=0.0,
+            energy_cost=energy_cost,
+            energy_revenue=energy_revenue,
+            distribution_cost=distribution_cost,
+            injection_cost=0.0,
+            gsc_cost=gsc_cost,
+            wkk_cost=wkk_cost,
+            capacity_cost=0.0,
+            data_management_cost=0.0,
+            energy_contribution=energy_contribution,
+            excise_tax=excise_tax,
+            energy_fund_contribution=0.0,
+            total_kwh_delivered=energy_data.total_kwh_delivered,
+            total_kwh_returned=energy_data.total_kwh_returned,
+            peak_power_kw=energy_data.peak_power_kw,
+        )

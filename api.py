@@ -82,6 +82,24 @@ def cost_current(tariff: Literal["dynamic", "fixed"] = "dynamic"):
     return cost(year=now.year, month=now.month, tariff=tariff)
 
 
+@app.get("/cost/range")
+def cost_range(start: str, end: str):
+    """Energy cost for an arbitrary [start, end) ISO-8601 range.
+
+    Excludes fixed/data-management/capacity costs, which are only
+    meaningful for a full calendar month — use /cost for those.
+    """
+    try:
+        start_dt = datetime.fromisoformat(start)
+        end_dt = datetime.fromisoformat(end)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="start/end must be ISO-8601 timestamps")
+
+    service = _make_dynamic_service()
+    breakdown = service.calculate_range_cost(start_dt, end_dt)
+    return _breakdown_to_dict(breakdown)
+
+
 @app.get("/cost/comparison")
 def cost_comparison(year: int, month: int):
     if not (1 <= month <= 12):

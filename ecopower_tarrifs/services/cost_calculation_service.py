@@ -80,3 +80,30 @@ class MonthlyCostCalculationService:
         """
         now = datetime.now()
         return self.calculate_monthly_cost(now.year, now.month)
+
+    def calculate_range_cost(self, start_date: datetime, end_date: datetime) -> MonthlyCostBreakdown:
+        """
+        Calculate energy cost for an arbitrary date range (day/week/year view).
+
+        See EcopowerTariffCalculator.calculate_range_cost — excludes fixed,
+        data-management and capacity costs, which only make sense for a full
+        calendar month.
+        """
+        consumption_readings = self.power_repository.get_consumption_readings(
+            start_date, end_date
+        )
+        injection_readings = self.power_repository.get_injection_readings(
+            start_date, end_date
+        )
+        epex_price_list = self.price_repository.get_prices(start_date, end_date)
+
+        epex_prices: Dict[datetime, float] = {
+            price.timestamp: price.price_eur_mwh
+            for price in epex_price_list
+        }
+
+        return self.calculator.calculate_range_cost(
+            consumption_readings=consumption_readings,
+            injection_readings=injection_readings,
+            epex_prices=epex_prices,
+        )
